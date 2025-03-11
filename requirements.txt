@@ -1,0 +1,13 @@
+acsconv
+autokeras
+joblib
+medmnist
+numpy
+Pillow
+prettytable
+pytorch_lightning
+tensorboardX
+tensorflow
+torch
+torchvision
+tqdm
