@@ -9,7 +9,7 @@ import torch
 import random
 
 class PairedCnMedMNIST2D(Dataset):
-    def __init__(self, data, transform, split, x2_angle, test_all_rotations=False):
+    def __init__(self, data, transform, split, x2_angle, test_all_rotations=False, fixed_covariate=None):
         """
         Args:
         data: MedMNIST dataset object. In particular, this class assumes that the dataset object has the following attributes:
@@ -24,6 +24,7 @@ class PairedCnMedMNIST2D(Dataset):
         self.x2_angle = x2_angle
         self.test_all_rotations = test_all_rotations
         self.transform = transform
+        self.fixed_covariate = fixed_covariate
         assert 360 % x2_angle == 0, "x2_angle must divide 360 evenly"
 
         self.rotation_indices = [i for i in range(int(360/x2_angle))]
@@ -58,7 +59,7 @@ class PairedCnMedMNIST2D(Dataset):
             
             transformation_type = 0
             # Here introduces soft constraints if range = [1, 360/x2_angle], as we get W^N
-            covariate = random.randint(1, int(360/self.x2_angle)-1)
+            covariate = random.randint(1, int(360/self.x2_angle)-1)  if self.fixed_covariate is None else self.fixed_covariate
             x2_angle = (augment_angle_covariate+covariate)%int(360/self.x2_angle) * self.x2_angle
             target_angle = int(x2_angle/self.x2_angle)
             y2 = torch.tensor([label, target_angle])
@@ -102,7 +103,7 @@ class PairedCnMedMNIST2D(Dataset):
 
 
 class CnMedMNISTDataModule(pl.LightningDataModule):
-    def __init__(self, data_flag, batch_size, resize, as_rgb, size, download, x2_angle):
+    def __init__(self, data_flag, batch_size, resize, as_rgb, size, download, x2_angle, fixed_covariate=None):
         super().__init__()
         self.data_flag = data_flag
         self.batch_size = batch_size
@@ -113,6 +114,9 @@ class CnMedMNISTDataModule(pl.LightningDataModule):
         self.info = INFO[data_flag]
         self.DataClass = getattr(medmnist, self.info['python_class'])
         self.x2_angle = x2_angle
+        self.fixed_covariate = fixed_covariate
+        if self.fixed_covariate is not None:
+            print(f"Using fixed covariate = {self.fixed_covariate}")
         assert 360 % x2_angle == 0, "x2_angle must divide 360 evenly"
 
         print(f"Using x2 angle = {self.x2_angle}")
@@ -131,13 +135,13 @@ class CnMedMNISTDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         train_data = self.DataClass(split='train', transform=self.transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
-        self.train_dataset = PairedCnMedMNIST2D(train_data, transform=self.transform, split='train', x2_angle=self.x2_angle)
+        self.train_dataset = PairedCnMedMNIST2D(train_data, transform=self.transform, split='train', x2_angle=self.x2_angle, fixed_covariate=self.fixed_covariate)
 
         val_data = self.DataClass(split='val', transform=self.transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
-        self.val_dataset = PairedCnMedMNIST2D(val_data, transform=self.transform, split='val', x2_angle=self.x2_angle)
+        self.val_dataset = PairedCnMedMNIST2D(val_data, transform=self.transform, split='val', x2_angle=self.x2_angle, fixed_covariate=self.fixed_covariate)
 
         test_data = self.DataClass(split='test', transform=self.transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
-        self.test_dataset = PairedCnMedMNIST2D(test_data, transform=self.transform, split='test', x2_angle=self.x2_angle)
+        self.test_dataset = PairedCnMedMNIST2D(test_data, transform=self.transform, split='test', x2_angle=self.x2_angle, fixed_covariate=self.fixed_covariate)
 
 
     def train_dataloader(self):
