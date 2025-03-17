@@ -6,6 +6,7 @@ from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from datasets.MedMNIST2D_dataset import MedMNISTDataModule
 from datasets.CnMedMNIST2D_dataset import CnMedMNISTDataModule
+from datasets.Z2MedMNIST2D_dataset import Z2MedMNISTDataModule
 from models.MedMNISTVanilla import MedMNISTModel
 from models.FunctorModel import FunctorModel
 import torch
@@ -16,6 +17,8 @@ def get_dataset_from_args(args):
         return CnMedMNISTDataModule(args.data_flag, args.batch_size, args.resize, args.as_rgb, args.size, args.download, args.x2_angle, args.fixed_covariate)
     if args.dataset == 'vanilla':
         return MedMNISTDataModule(args.data_flag, args.batch_size, args.resize, args.as_rgb, args.size, args.download)
+    if args.dataset == 'z2':
+        return Z2MedMNISTDataModule(args.data_flag, args.batch_size, args.resize, args.as_rgb, args.size, args.download)
     raise NotImplementedError
 
 
@@ -26,7 +29,7 @@ def get_model_from_args(args):
     elif args.model == 'functor':
         return FunctorModel(args.model_flag, n_channels, n_classes, task, args.data_flag, args.size, args.run,
                           milestones=milestones, output_root=log_dir, lambda_t=args.lambda_t, lambda_W=args.lambda_W, 
-                          latent_transform_process=args.latent_transform_process)
+                          latent_transform_process=args.latent_transform_process, device=args.device, modularity_exponent=args.modularity_exponent)
     raise NotImplementedError
 
 
@@ -39,13 +42,12 @@ def get_args():
     parser.add_argument('--size', type=int, default=28)
     parser.add_argument('--download', action='store_true')
     parser.add_argument('--resize', action='store_true')
-    parser.add_argument('--as_rgb', action='store_true')
+    parser.add_argument('--not_rgb', action='store_true')
     parser.add_argument('--patience', type=int, default=20)
     
     parser.add_argument('--x2_angle', type=float, default=90.0, help='Angle to rotate the second image in paired datasets')
     parser.add_argument('--fixed_covariate', type=int, default=None, help='Fixed covariate for paired datasets')
 
-    
     parser.add_argument('--model_flag', type=str, default='resnet18')
     parser.add_argument('--model', type=str, default='functor')
 
@@ -57,14 +59,21 @@ def get_args():
     parser.add_argument('--batch_size', type=int, default=128)
     
     parser.add_argument('--run', type=str, default='model1')
-    parser.add_argument('--gpu_ids', type=str, default='0')
+    parser.add_argument('--visible_gpus', type=str, default='0')
+    parser.add_argument('--gpu_id', type=str, default='0')
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = get_args()
 
-    args.as_rgb = True
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.visible_gpus
+    device = torch.device(f'cuda:{args.gpu_id}' if torch.cuda.is_available() else 'cpu')
+    args.device = device
+    print("Using device: ", device)
+
+    args.as_rgb = True if not args.not_rgb else False
+    print("Using RGB: ", args.as_rgb)
 
     info = INFO[args.data_flag]
     task = info['task']
@@ -86,9 +95,13 @@ if __name__ == "__main__":
 
     ###################################### data_module #####################################
     data_module = get_dataset_from_args(args)
+    if args.dataset == 'pairedcn':
+        args.modularity_exponent = 4
+    elif args.dataset == 'z2':
+        args.modularity_exponent = 2
 
     ###################################### model #####################################
-    model = get_model_from_args(args)
+    model = get_model_from_args(args).to(device)
     model.print_hyperparameters()
 
     ###################################### callbacks #####################################
@@ -107,6 +120,7 @@ if __name__ == "__main__":
         trainer = pl.Trainer(
             max_epochs=args.num_epochs,
             accelerator='gpu' if torch.cuda.is_available() else 'cpu',
+            devices=[int(args.gpu_id)],
             default_root_dir=log_dir,
             callbacks=[early_stop_callback, checkpoint_callback],
             logger=logger

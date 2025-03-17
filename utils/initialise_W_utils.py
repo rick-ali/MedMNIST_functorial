@@ -6,18 +6,18 @@ def initialise_W_random(dim):
     W = torch.randn(dim, dim)
     return W
 
-def initialise_W_orthogonal(dim, noise_level=0):
-    W = torch.nn.init.orthogonal_(torch.empty((dim, dim), device='cuda'))
-    W += noise_level * torch.randn((dim, dim), device='cuda')
+def initialise_W_orthogonal(dim, noise_level=0, device='cuda'):
+    W = torch.nn.init.orthogonal_(torch.empty((dim, dim), device=device))
+    W += noise_level * torch.randn((dim, dim), device=device)
     return W
 
-def initialise_W_random_roots_of_unity(dim, N, noise_level=0):
-    roots = [torch.exp(torch.tensor(2 * torch.pi * 1j * i / N, device='cuda')) for i in range(N)]
-    W = torch.eye(dim, device='cuda')
+def initialise_W_random_roots_of_unity(dim, N, noise_level=0, device='cuda'):
+    roots = [torch.exp(torch.tensor(2 * torch.pi * 1j * i / N, device=device)) for i in range(N)]
+    W = torch.eye(dim, device=device)
     for i in range(dim):
         W[i, i] = random.choice(roots)
 
-    W += noise_level * torch.randn((dim, dim), device='cuda')
+    W += noise_level * torch.randn((dim, dim), device=device)
     return W
 
 

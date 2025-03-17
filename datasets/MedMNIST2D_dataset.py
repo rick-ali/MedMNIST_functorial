@@ -47,3 +47,15 @@ class MedMNISTDataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False)
+        
+
+if __name__ == '__main__':
+    data_module = MedMNISTDataModule('pathmnist', 128, resize=False, as_rgb=False, size=28, download=False)
+    data_module.setup()
+    train_loader = data_module.train_dataloader()
+    val_loader = data_module.val_dataloader()
+    test_loader = data_module.test_dataloader()
+    print(len(train_loader), len(val_loader), len(test_loader))
+    for x, y in train_loader:
+        print(x.shape, y.shape)
+        break

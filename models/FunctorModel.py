@@ -13,7 +13,7 @@ class FunctorModel(pl.LightningModule):
     def __init__(self, model_flag, n_channels, n_classes, task, data_flag, size, run,
                  lr=0.001, gamma=0.1, milestones=None, output_root=None, 
                  latent_dim=512, lambda_t=0.5, lambda_W=0.1, modularity_exponent=4,
-                 latent_transform_process='from_generators'):
+                 latent_transform_process='from_generators', device='cuda'):
         super().__init__()
         # Save all hyperparameters including new ones for evaluation
         self.save_hyperparameters()
@@ -44,16 +44,16 @@ class FunctorModel(pl.LightningModule):
         self.lambda_W = lambda_W
         self.latent_dim = latent_dim
         self.modularity_exponent = modularity_exponent
-        self.identity = torch.eye(latent_dim, device='cuda')
         self.latent_transform_process = latent_transform_process
         if self.latent_transform_process == 'from_generators':
             print("Using latent transformation from generators")
-            self.W = nn.Parameter(initialise_W_orthogonal(latent_dim, noise_level=0.3))
+            self.W = nn.Parameter(initialise_W_orthogonal(latent_dim, noise_level=0.3, device=device))
+            #self.W = self.identity
         elif self.latent_transform_process == 'decoupled':
             print("Using decoupled latent transformation")
-            self.W1 = nn.Parameter(initialise_W_orthogonal(latent_dim, noise_level=0.3))
-            self.W2 = nn.Parameter(initialise_W_orthogonal(latent_dim, noise_level=0.3))
-            self.W3 = nn.Parameter(initialise_W_orthogonal(latent_dim, noise_level=0.3))
+            self.W1 = nn.Parameter(initialise_W_orthogonal(latent_dim, noise_level=0.3, device=device))
+            self.W2 = nn.Parameter(initialise_W_orthogonal(latent_dim, noise_level=0.3, device=device))
+            self.W3 = nn.Parameter(initialise_W_orthogonal(latent_dim, noise_level=0.3, device=device))
         
 
     def forward(self, x):
@@ -103,9 +103,17 @@ class FunctorModel(pl.LightningModule):
         return transformation_loss
     
     def get_modularity_loss(self, W):
-        W_2 = W @ W
-        W_4 = W_2 @ W_2
-        modularity_loss = torch.dist(W_4, self.identity)
+        if self.modularity_exponent == 4:
+            W_2 = W @ W
+            W_4 = W_2 @ W_2
+            identity = torch.eye(self.latent_dim, device=W.device)
+            modularity_loss = nn.functional.mse_loss(W_4, identity)
+        elif self.modularity_exponent == 2:
+            W_2 = W @ W
+            identity = torch.eye(self.latent_dim, device=W.device)
+            modularity_loss = nn.functional.mse_loss(W_2, identity)
+        else:
+            raise NotImplementedError("Only modularity exponents of 2 and 4 are supported")
         return modularity_loss
 
     def get_algebra_loss(self):
@@ -126,8 +134,8 @@ class FunctorModel(pl.LightningModule):
 
     def calculate_loss(self, batch, batch_idx, stage):
         (x1, y1), (x2, y2), transformation_type, covariate = batch
-        labels1 = y1[:,0].unsqueeze(1)
-        labels2 = y2[:,0].unsqueeze(1)
+        labels1 = y1
+        labels2 = y1
         
         outputs1, latent1 = self(x1)
         outputs2, latent2 = self(x2)
@@ -156,9 +164,9 @@ class FunctorModel(pl.LightningModule):
 
         ########### logging ###########
         losses = {
-            'natural_loss': natural_loss,
-            'transformation_loss': transformation_loss,
-            'algebra_loss': algebra_loss
+            f'{stage}_natural_loss': natural_loss,
+            f'{stage}_transformation_loss': transformation_loss,
+            f'{stage}_algebra_loss': algebra_loss
         }
         loss = natural_loss + self.lambda_t * transformation_loss + self.lambda_W * algebra_loss
         if stage == 'train':

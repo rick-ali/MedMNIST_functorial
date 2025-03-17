@@ -8,8 +8,8 @@ import PIL
 import torch
 import random
 
-class PairedCnMedMNIST2D(Dataset):
-    def __init__(self, data, transform, split, x2_angle, test_all_rotations=False, fixed_covariate=None):
+class PairedZ2MedMNIST2D(Dataset):
+    def __init__(self, data, transform, split, test_all_rotations=False):
         """
         Args:
         data: MedMNIST dataset object. In particular, this class assumes that the dataset object has the following attributes:
@@ -21,13 +21,9 @@ class PairedCnMedMNIST2D(Dataset):
         """
         self.data = data
         self.split = split
-        self.x2_angle = x2_angle
         self.test_all_rotations = test_all_rotations
         self.transform = transform
-        self.fixed_covariate = fixed_covariate
-        assert 360 % x2_angle == 0, "x2_angle must divide 360 evenly"
 
-        self.rotation_indices = [i for i in range(int(360/x2_angle))]
 
     def __len__(self):
         """
@@ -42,54 +38,41 @@ class PairedCnMedMNIST2D(Dataset):
         else:
             return len(self.data.imgs)
     
-    def affine_transform(self, image, angle, scale, shear, x_displacement=0, y_displacement=0):
-        # x,y displacement is useless if we use a CNN since it's translation invariant
-        return TF.affine(image, angle, [x_displacement, y_displacement], scale, shear, interpolation=TF.InterpolationMode.BILINEAR)
     
     def __getitem__(self, idx):
         if self.split == 'train':
             x1, y1 = self.data.__getitem__(idx)
-            augment_angle_covariate = random.randint(0, int(360/self.x2_angle)-1)
-            augment_angle = augment_angle_covariate * self.x2_angle
-            scale = 1.0
-            augmented_X1 = self.affine_transform(x1, angle=augment_angle, scale=scale, shear=0)
+            flip_x1 = random.choice([True, False])
+            augmented_X1 = TF.hflip(x1) if flip_x1 else x1
             
             transformation_type = 0
-            # Here introduces soft constraints if range = [1, 360/x2_angle], as we get W^N
-            covariate = random.randint(1, int(360/self.x2_angle)-1)  if self.fixed_covariate is None else self.fixed_covariate
-            x2_angle = (augment_angle_covariate+covariate)%int(360/self.x2_angle) * self.x2_angle
-            transformed_X2 = self.affine_transform(x1, angle=x2_angle, scale=scale, shear=0)
+            covariate = 1
+            transformed_X2 = TF.hflip(augmented_X1)
         
         else:
-            
             if self.test_all_rotations:
-                img_idx = idx // len(self.rotation_indices)
+                img_idx = idx // 2
                 x1, y1 = self.data.__getitem__(img_idx)
-                rotation_idx = idx % len(self.rotation_indices) 
+                flipping_idx = idx % 2
 
-                augment_angle_covariate = self.rotation_indices[rotation_idx]
-                augment_angle = augment_angle_covariate * self.x2_angle
-                scale = 1.0
-                augmented_X1 = self.affine_transform(x1, angle=augment_angle, scale=scale, shear=0)
+                flip_x1 = [True,False][flipping_idx]
+                augmented_X1 = TF.hflip(x1) if flip_x1 else x1
                 
-                transformation_type = 0
-                covariate = random.randint(1, int(360/self.x2_angle)-1)
-                x2_angle = (augment_angle_covariate+covariate)%int(360/self.x2_angle) * self.x2_angle
-                transformed_X2 = self.affine_transform(x1, angle=x2_angle, scale=scale, shear=0)
+                covariate = 1
+                transformed_X2 = TF.hflip(augmented_X1)
 
             else:
                 x1, y1 = self.data.__getitem__(idx)
-                augmented_X1 = x1
-                transformed_X2 = x1
+                transformed_X2 = TF.hflip(x1)
                 transformation_type = 0
                 covariate = 0
 
-        return (augmented_X1, y1), (transformed_X2, y1), transformation_type, covariate
+        return (x1, y1), (transformed_X2, y1), transformation_type, covariate
 
 
 
-class CnMedMNISTDataModule(pl.LightningDataModule):
-    def __init__(self, data_flag, batch_size, resize, as_rgb, size, download, x2_angle, fixed_covariate=None):
+class Z2MedMNISTDataModule(pl.LightningDataModule):
+    def __init__(self, data_flag, batch_size, resize, as_rgb, size, download):
         super().__init__()
         self.data_flag = data_flag
         self.batch_size = batch_size
@@ -99,13 +82,6 @@ class CnMedMNISTDataModule(pl.LightningDataModule):
         self.download = download
         self.info = INFO[data_flag]
         self.DataClass = getattr(medmnist, self.info['python_class'])
-        self.x2_angle = x2_angle
-        self.fixed_covariate = fixed_covariate
-        if self.fixed_covariate is not None:
-            print(f"Using fixed covariate = {self.fixed_covariate}")
-        assert 360 % x2_angle == 0, "x2_angle must divide 360 evenly"
-
-        print(f"Using x2 angle = {self.x2_angle}")
         
         if resize:
             self.transform = transforms.Compose([
@@ -121,13 +97,13 @@ class CnMedMNISTDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         train_data = self.DataClass(split='train', transform=self.transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
-        self.train_dataset = PairedCnMedMNIST2D(train_data, transform=self.transform, split='train', x2_angle=self.x2_angle, fixed_covariate=self.fixed_covariate)
+        self.train_dataset = PairedZ2MedMNIST2D(train_data, transform=self.transform, split='train')
 
         val_data = self.DataClass(split='val', transform=self.transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
-        self.val_dataset = PairedCnMedMNIST2D(val_data, transform=self.transform, split='val', x2_angle=self.x2_angle, fixed_covariate=self.fixed_covariate)
+        self.val_dataset = PairedZ2MedMNIST2D(val_data, transform=self.transform, split='val')
 
         test_data = self.DataClass(split='test', transform=self.transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
-        self.test_dataset = PairedCnMedMNIST2D(test_data, transform=self.transform, split='test', x2_angle=self.x2_angle, fixed_covariate=self.fixed_covariate)
+        self.test_dataset = PairedZ2MedMNIST2D(test_data, transform=self.transform, split='test')
 
 
     def train_dataloader(self):
@@ -140,7 +116,7 @@ class CnMedMNISTDataModule(pl.LightningDataModule):
         return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=15)
     
 if __name__ == '__main__':
-    data_module = CnMedMNISTDataModule('chestmnist', 128, resize=False, as_rgb=True, size=28, download=False, x2_angle=90)
+    data_module = Z2MedMNISTDataModule('pathmnist', 128, resize=False, as_rgb=True, size=28, download=False)
     data_module.setup()
     train_loader = data_module.train_dataloader()
     val_loader = data_module.val_dataloader()
