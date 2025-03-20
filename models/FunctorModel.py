@@ -7,12 +7,13 @@ import pytorch_lightning as pl
 from torchvision.models import resnet18, resnet50
 from medmnist import Evaluator
 from models.BaseModels import ResNet18
-from utils.initialise_W_utils import initialise_W_orthogonal, initialise_W_random
+from utils.initialise_W_utils import initialise_W_orthogonal, initialise_W_random, initialise_W_real_Cn_irreps
 
 class FunctorModel(pl.LightningModule):
     def __init__(self, model_flag, n_channels, n_classes, task, data_flag, size, run,
                  lr=0.001, gamma=0.1, milestones=None, output_root=None, 
                  latent_dim=512, lambda_t=0.5, lambda_W=0.1, modularity_exponent=4,
+                 fix_rep=False, W_init='orthogonal',
                  latent_transform_process='from_generators', device='cuda'):
         super().__init__()
         # Save all hyperparameters including new ones for evaluation
@@ -45,16 +46,41 @@ class FunctorModel(pl.LightningModule):
         self.latent_dim = latent_dim
         self.modularity_exponent = modularity_exponent
         self.latent_transform_process = latent_transform_process
+        self.fix_rep = fix_rep
+        self.W_init = W_init
+    
         if self.latent_transform_process == 'from_generators':
             print("Using latent transformation from generators")
-            self.W = nn.Parameter(initialise_W_orthogonal(latent_dim, noise_level=0.3, device=device))
-            #self.W = self.identity
+            self.W = self.initialise_W(W_init, device=device)
+            if not self.fix_rep:
+                self.W = nn.Parameter(self.W)
+            
         elif self.latent_transform_process == 'decoupled':
             print("Using decoupled latent transformation")
-            self.W1 = nn.Parameter(initialise_W_orthogonal(latent_dim, noise_level=0.3, device=device))
-            self.W2 = nn.Parameter(initialise_W_orthogonal(latent_dim, noise_level=0.3, device=device))
-            self.W3 = nn.Parameter(initialise_W_orthogonal(latent_dim, noise_level=0.3, device=device))
+            self.W1 = self.initialise_W(W_init, device=device)
+            self.W2 = self.initialise_W(W_init, device=device)
+            self.W3 = self.initialise_W(W_init, device=device)
+            if not self.fix_rep:
+                self.W1 = nn.Parameter(self.W1)
+                self.W2 = nn.Parameter(self.W2)
+                self.W3 = nn.Parameter(self.W3)
         
+
+    def initialise_W(self, initialization, device):
+        if initialization == 'orthogonal':
+            return initialise_W_orthogonal(self.latent_dim, noise_level=0.3, device=device)
+        elif initialization == 'random':
+            return initialise_W_random(self.latent_dim, device=device)
+        elif initialization == 'identity':
+            return torch.eye(self.latent_dim, device=device)
+        elif initialization == 'regular':
+            assert self.latent_dim % self.modularity_exponent == 0, "Latent dimension must be divisible by the modularity exponent"
+            irrep_dims = [self.latent_dim // self.modularity_exponent] * self.modularity_exponent
+            print(f"Irrep dimensions: {irrep_dims}")
+            return initialise_W_real_Cn_irreps(irrep_dims, self.modularity_exponent)
+        else:
+            raise NotImplementedError
+
 
     def forward(self, x):
         outputs, latent = self.model(x)
@@ -69,7 +95,7 @@ class FunctorModel(pl.LightningModule):
         transformed_latent2 = F.linear(latent2, self.W2)
         transformed_latent3 = F.linear(latent3, self.W3)
 
-        transformed_latent = torch.empty_like(latent)
+        transformed_latent = torch.empty_like(latent, device=latent.device)
         transformed_latent[covariate == 1] = transformed_latent1
         transformed_latent[covariate == 2] = transformed_latent2
         transformed_latent[covariate == 3] = transformed_latent3
@@ -197,6 +223,7 @@ class FunctorModel(pl.LightningModule):
         result = self.standard_evaluation('val', self.validation_step_outputs, self.val_evaluator)
         self.validation_step_outputs.clear()
         self.log_dict(result)
+        
         return result
 
     def test_step(self, batch, batch_idx):
@@ -206,6 +233,8 @@ class FunctorModel(pl.LightningModule):
     def on_test_epoch_end(self):
         result = self.standard_evaluation('test', self.test_step_outputs, self.test_evaluator)
         self.test_step_outputs.clear()
+        modularity_loss = torch.linalg.matrix_norm(torch.linalg.matrix_power(self.W, 4) - torch.eye(self.latent_dim, device=self.W.device), ord='fro')
+        result['test_modularity_loss'] = modularity_loss
         self.log_dict(result)
         return result
     
@@ -222,7 +251,7 @@ class FunctorModel(pl.LightningModule):
         else:
             y_score = torch.nn.functional.softmax(logits, dim=1)
         y_score = y_score.detach().cpu().numpy()
-        auc, acc = evaluator.evaluate(y_score, self.output_root, self.hparams.run)
+        auc, acc = evaluator.evaluate(y_score, None, self.hparams.run)
         
         return {f'{stage}_auc': auc, f'{stage}_acc': acc}
 

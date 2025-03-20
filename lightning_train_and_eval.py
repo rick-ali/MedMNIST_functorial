@@ -26,10 +26,14 @@ def get_model_from_args(args):
     if args.model == 'vanilla':
         return MedMNISTModel(args.model_flag, n_channels, n_classes, task, args.data_flag, args.size, args.run,
                           milestones=milestones, output_root=log_dir)
+    
     elif args.model == 'functor':
-        return FunctorModel(args.model_flag, n_channels, n_classes, task, args.data_flag, args.size, args.run,
-                          milestones=milestones, output_root=log_dir, lambda_t=args.lambda_t, lambda_W=args.lambda_W, 
-                          latent_transform_process=args.latent_transform_process, device=args.device, modularity_exponent=args.modularity_exponent)
+        return FunctorModel(args.model_flag, n_channels, n_classes, task, args.data_flag, args.size, args.run, device=args.device,
+                          milestones=milestones, output_root=log_dir, 
+                          lambda_t=args.lambda_t, lambda_W=args.lambda_W, 
+                          W_init=args.W_init, fix_rep=args.fix_rep,
+                          latent_transform_process=args.latent_transform_process, modularity_exponent=args.modularity_exponent)
+    
     raise NotImplementedError
 
 
@@ -54,12 +58,14 @@ def get_args():
     parser.add_argument('--lambda_t', type=float, default=0.5)
     parser.add_argument('--lambda_W', type=float, default=0.1)
     parser.add_argument('--latent_transform_process', type=str, default='from_generators')
+    parser.add_argument('--W_init', type=str, default='orthogonal')
+    parser.add_argument('--fix_rep', action='store_true')
 
     parser.add_argument('--num_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=128)
     
     parser.add_argument('--run', type=str, default='model1')
-    parser.add_argument('--visible_gpus', type=str, default='0')
+    parser.add_argument('--visible_gpus', type=str, default='0,1,2,3')
     parser.add_argument('--gpu_id', type=str, default='0')
     return parser.parse_args()
 
@@ -67,7 +73,8 @@ def get_args():
 if __name__ == "__main__":
     args = get_args()
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = args.visible_gpus
+    if args.gpu_id != '0':
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.visible_gpus
     device = torch.device(f'cuda:{args.gpu_id}' if torch.cuda.is_available() else 'cpu')
     args.device = device
     print("Using device: ", device)
@@ -86,7 +93,7 @@ if __name__ == "__main__":
     model_name = f'{args.run}_{args.model_flag}_lambdaT_{args.lambda_t}_lambdaW_{args.lambda_W}'
     logger = TensorBoardLogger(
         save_dir=args.output_root,
-        name=f'{args.data_flag}/{args.model}/{model_name}'
+        name=f'{args.data_flag}/{args.dataset}/{model_name}'
     )
     log_dir = logger.log_dir
 
@@ -116,18 +123,23 @@ if __name__ == "__main__":
     )
     
     ###################################### trainer #####################################
-    try:
-        trainer = pl.Trainer(
-            max_epochs=args.num_epochs,
-            accelerator='gpu' if torch.cuda.is_available() else 'cpu',
-            devices=[int(args.gpu_id)],
-            default_root_dir=log_dir,
-            callbacks=[early_stop_callback, checkpoint_callback],
-            logger=logger
-        )
-        trainer.fit(model, data_module)
-    finally:
-        best_model_path = checkpoint_callback.best_model_path
-        print("Loading model from best checkpoint: ", best_model_path)
-        model = type(model).load_from_checkpoint(best_model_path)
-        trainer.test(model, data_module)
+    #try:
+    trainer = pl.Trainer(
+        max_epochs=args.num_epochs,
+        accelerator='gpu' if torch.cuda.is_available() else 'cpu',
+        devices=[int(args.gpu_id)],
+        default_root_dir=log_dir,
+        callbacks=[early_stop_callback, checkpoint_callback],
+        logger=logger
+    )
+    trainer.fit(model, data_module)
+    best_model_path = checkpoint_callback.best_model_path
+    print("Loading model from best checkpoint: ", best_model_path)
+    model = type(model).load_from_checkpoint(best_model_path)
+    trainer.test(model, data_module)
+    #except Exception as e:
+        #pass
+        # best_model_path = checkpoint_callback.best_model_path
+        # print("Loading model from best checkpoint: ", best_model_path)
+        # model = type(model).load_from_checkpoint(best_model_path)
+        # trainer.test(model, data_module)
