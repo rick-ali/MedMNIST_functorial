@@ -1,38 +1,39 @@
 import subprocess
 from medmnist import INFO
+import argparse
+import time
+from joblib import Parallel, delayed
 
 
-if __name__ == "__main__":
-    N = 5
-    commands = []
-    datasets = list(INFO.keys())
+def run_experiments_on_gpu(n_runs, gpu_id, chunk_size):    
+    time.sleep(int(gpu_id) * 5)
+    base_commands = [
+        'python3 lightning_train_and_eval.py --run=vanilla_augmented ' + \
+        f'--lambda_t=0.0 --lambda_W=0.0 --data_flag=pathmnist --dataset=z2 --gpu_id={gpu_id}',
+    ]
 
-    # terminal_commands =[
-    #     "python3 lightning_train_and_eval.py --run=VANILLA --lambda_t=0. --lambda_W=0",
-    #     "python3 lightning_train_and_eval.py --run=FROM_GENERATORS --lambda_t=0.1 --lambda_W=0",
-    #     "python3 lightning_train_and_eval.py --run=FROM_GENERATORS --lambda_t=0.5 --lambda_W=0",
-    #     "python3 lightning_train_and_eval.py --run=FROM_GENERATORS --lambda_t=0.5 --lambda_W=0.1",
-    #     "python3 lightning_train_and_eval.py --run=DECOUPLED --lambda_t=0.5 --lambda_W=0",
-    #     "python3 lightning_train_and_eval.py --run=DECOUPLED --lambda_t=0.5 --lambda_W=0.1",
-    #     "python3 lightning_train_and_eval.py --run=FROM_GENERATORS_1_COVARIATE --lambda_t=0.5 --lambda_W=0 --fixed_covariate=1",
-    #     "python3 lightning_train_and_eval.py --run=FROM_GENERATORS_1_COVARIATE --lambda_t=0.5 --lambda_W=0.1 --fixed_covariate=1",
-    # ]
-    terminal_commands = []
-    for dataset in datasets:
-        for coefficient in [0.0, 0.1]:
-            run_name = f"VANILLA_AUGMENTED" if coefficient == 0.0 else f"FROM_GENERATORS_1_COVARIATE_MSE"
-            cmd = f"python3 lightning_train_and_eval.py --run={run_name} --lambda_t={coefficient} --lambda_W={coefficient} --fixed_covariate=1 --data_flag={dataset} --download"
-            terminal_commands.append(cmd)
+    commands = base_commands * n_runs
 
-    # Repeat each experiment N times
-    for _ in range(N):
-        for i in range(int(len(terminal_commands)/3)):
-            commands = terminal_commands[3*i: 3*i+3]
-            print("processing commands: ", commands)
-            processes = [subprocess.Popen(cmd, shell=True) for cmd in commands]
-            for p in processes:
-                p.wait()
-            commands = []
-
-        
+    # divide commands into chunks of size 4
+    chunks = [commands[i:i+chunk_size] for i in range(0, len(commands), chunk_size)]
     
+    for i, chunk in enumerate(chunks):
+        processes = []
+        for command in chunk:
+            print(command)
+            processes.append(subprocess.Popen(command, shell=True))
+            time.sleep(5)
+        for process in processes: process.wait()
+
+
+if __name__ == '__main__':
+    N_EXPERIMENTS_PER_GPU = 4
+    N_PARALLEL_EXPERIMENTS_PER_GPU = 2
+    GPUS = ['0', '1', '2', '3']
+
+    print(f"Running a total of {N_EXPERIMENTS_PER_GPU * len(GPUS)} experiments on {len(GPUS)} GPUs")
+    time.sleep(2)
+
+    # Run experiments in parallel on all GPUs
+    Parallel(n_jobs=len(GPUS))(delayed(run_experiments_on_gpu)(N_EXPERIMENTS_PER_GPU, gpu_id, N_PARALLEL_EXPERIMENTS_PER_GPU) for gpu_id in GPUS)
+        

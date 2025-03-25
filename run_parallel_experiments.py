@@ -6,15 +6,41 @@ import logging
 from datetime import datetime
 import time
 import random
+import medmnist
 
 # List of base terminal commands (without --gpu argument)
-base_commands = [
-        'python3 lightning_train_and_eval.py --run=covariate_1_identity_fixed \
-            --fixed_covariate=1 --lambda_t=0.5 --lambda_W=0.0 --data_flag=retinamnist --dataset=z2 \
-                --W_init=identity --fix_rep'
-    ]
-commands = base_commands * 10
+INFO = medmnist.INFO
+# Get all datasets
+datasets = [dataset for dataset in list(INFO.keys()) if '3d' not in dataset]
+base_commands = []
+for dataset in datasets:
+    # base_commands.append(
+    #         f'python3 lightning_train_and_eval.py --run=functor \
+    #             --lambda_t=0.5 --lambda_W=0.5 --data_flag={dataset} --dataset=z2 --W_init=orthogonal')
+    
+    # base_commands.append(
+    #         f'python3 lightning_train_and_eval.py --run=fixed_identity \
+    #             --lambda_t=0.5 --lambda_W=0. --data_flag={dataset} --dataset=z2 --W_init=identity --fix_rep')
 
+    # base_commands.append(
+    #         f'python3 lightning_train_and_eval.py --run=fixed_regular \
+    #             --lambda_t=0.5 --lambda_W=0. --data_flag={dataset} --dataset=z2 --W_init=regular --fix_rep')
+
+    # base_commands.append(
+    #     f'python3 lightning_train_and_eval.py --run=block_diagonal \
+    #             --lambda_t=0.5 --lambda_W=0.5 --data_flag={dataset} --dataset=z2 --W_init=block_diagonal --block_size=32'
+    # )
+    
+    # base_commands.append(
+    #     f'python3 lightning_train_and_eval.py --run=vanilla_augmented \
+    #             --lambda_t=0. --lambda_W=0. --data_flag={dataset} --dataset=z2'
+    # )
+
+    base_commands.append(
+            f'python3 lightning_train_and_eval.py --run=functor_MSEalgebra \
+                --lambda_t=0.5 --lambda_W=0.5 --data_flag={dataset} --dataset=z2 --W_init=orthogonal')
+
+commands = base_commands * 10
 
 # Setup logging to a text file
 log_file = "execution.log"
@@ -34,7 +60,7 @@ def log_event(event, command, gpu_id):
 
 
 num_gpus = 4  # Number of GPUs available
-N = 2         # Number of concurrent processes per GPU
+N = 3         # Number of concurrent processes per GPU
 
 # Create a shared job queue
 job_queue = queue.Queue()

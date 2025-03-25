@@ -31,7 +31,7 @@ def get_model_from_args(args):
         return FunctorModel(args.model_flag, n_channels, n_classes, task, args.data_flag, args.size, args.run, device=args.device,
                           milestones=milestones, output_root=log_dir, 
                           lambda_t=args.lambda_t, lambda_W=args.lambda_W, 
-                          W_init=args.W_init, fix_rep=args.fix_rep,
+                          W_init=args.W_init, fix_rep=args.fix_rep, W_block_size=args.block_size,
                           latent_transform_process=args.latent_transform_process, modularity_exponent=args.modularity_exponent)
     
     raise NotImplementedError
@@ -59,6 +59,7 @@ def get_args():
     parser.add_argument('--lambda_W', type=float, default=0.1)
     parser.add_argument('--latent_transform_process', type=str, default='from_generators')
     parser.add_argument('--W_init', type=str, default='orthogonal')
+    parser.add_argument('--block_size', type=int, default=32, help="Size of W when using block diagonal initialisation")
     parser.add_argument('--fix_rep', action='store_true')
 
     parser.add_argument('--num_epochs', type=int, default=100)
@@ -112,10 +113,10 @@ if __name__ == "__main__":
     model.print_hyperparameters()
 
     ###################################### callbacks #####################################
-    early_stop_callback = EarlyStopping(monitor='val_auc', mode='max', patience=args.patience, verbose=True)
+    early_stop_callback = EarlyStopping(monitor='val_loss', mode='min', patience=args.patience, verbose=True)
     checkpoint_callback = ModelCheckpoint(
-        monitor='val_auc', 
-        mode='max', 
+        monitor='val_loss', 
+        mode='min', 
         save_top_k=1,
         dirpath=checkpoints_dir,  # Use the version-specific checkpoints directory
         filename='best_model',

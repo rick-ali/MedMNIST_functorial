@@ -1,0 +1,133 @@
+\documentclass{article}
+\usepackage[a4paper, margin=1in]{geometry}  % Reduce margins
+\usepackage[dvipsnames]{xcolor}
+\usepackage{graphicx}  % For \resizebox
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+
+
+\begin{document}
+
+\section*{Experiment Results}
+\begin{itemize}
+    \item Vanilla: baseline model with augmentations
+    \item block\_diagonal: $W=I_{16}\otimes W'$ with $W'\in\mathbb{R}^{32\times32}$
+    \item identity: $W=I_{512}$ (not learnable)
+    \item orthogonal: $W\in\mathbb{R}^{512\times512}$ with orthogonal initialisation
+    \item orthogonalMSE: $W\in\mathbb{R}^{512\times512}$ with orthogonal initialisation and MSE loss to learn $W^2=I_{512}$
+    \item regular: $W=\text{regular\_rep}$ (not learnable)
+\end{itemize}
+Aggregate standard deviation computed as follows: $\sigma_{\text{pooled}}=\sqrt{\frac{\sum_{\text{dataset}}\sigma_{\text{dataset}}^2}{|\text{datasets}|-1}}$
+
+\begin{table}[h]
+    \centering
+    \renewcommand{\arraystretch}{1.2}  % Adjust row height for readability
+    \resizebox{\textwidth}{!}{  % Resize table to fit within the page width
+    \begin{tabular}{l|cccccc}
+        \hline
+        Dataset & Vanilla & block\_diagonal & identity & orthogonal & orthogonalMSE & regular \\ \hline
+        bloodmnist & 95.88$\pm$0.76 & 96.03$\pm$0.81 & 96.30$\pm$0.57 & 95.69$\pm$0.82 & \textbf{\textcolor{ForestGreen}{96.60$\pm$0.38*}} & \textcolor{ForestGreen}{96.38$\pm$0.51*} \\ \hline
+        breastmnist & 84.68$\pm$1.30 & \textcolor{ForestGreen}{86.09$\pm$1.21*} & \textcolor{red}{82.18$\pm$2.72*} & \textbf{\textcolor{ForestGreen}{87.50$\pm$1.58*}} & \textcolor{ForestGreen}{86.41$\pm$1.86*} & \textcolor{red}{82.76$\pm$3.54*} \\ \hline
+        chestmnist & 94.77$\pm$0.03 & 94.76$\pm$0.05 & 94.76$\pm$0.03 & \textcolor{red}{94.74$\pm$0.07*} & 94.77$\pm$0.02 & \textbf{94.77$\pm$0.03} \\ \hline
+        dermamnist & 74.90$\pm$0.81 & 75.20$\pm$0.49 & \textbf{\textcolor{ForestGreen}{75.58$\pm$0.56*}} & \textcolor{red}{73.96$\pm$1.21*} & \textcolor{red}{74.05$\pm$1.13*} & 74.96$\pm$0.73 \\ \hline
+        octmnist & \textbf{78.08$\pm$1.55} & \textcolor{red}{75.95$\pm$2.22*} & \textcolor{red}{75.61$\pm$1.72*} & \textcolor{red}{75.51$\pm$1.99*} & \textcolor{red}{75.45$\pm$2.98*} & 76.80$\pm$3.31 \\ \hline
+        organamnist & 92.03$\pm$0.91 & 91.90$\pm$1.04 & 91.95$\pm$0.62 & 91.48$\pm$0.99 & \textbf{92.17$\pm$0.67} & 91.95$\pm$1.11 \\ \hline
+        organcmnist & 89.27$\pm$0.74 & \textcolor{ForestGreen}{89.90$\pm$0.74*} & 89.61$\pm$0.85 & \textcolor{ForestGreen}{89.81$\pm$0.65*} & \textbf{\textcolor{ForestGreen}{90.38$\pm$0.32*}} & \textcolor{ForestGreen}{89.94$\pm$0.57*} \\ \hline
+        organsmnist & 76.02$\pm$1.28 & \textcolor{ForestGreen}{76.84$\pm$1.20*} & 76.24$\pm$1.10 & 76.52$\pm$1.49 & \textbf{\textcolor{ForestGreen}{77.36$\pm$0.67*}} & 76.75$\pm$1.13 \\ \hline
+        pathmnist & 89.91$\pm$1.47 & \textbf{90.23$\pm$1.31} & 89.73$\pm$1.57 & 89.31$\pm$1.98 & 89.27$\pm$1.41 & 89.17$\pm$1.22 \\ \hline
+        pneumoniamnist & 84.73$\pm$1.85 & 85.03$\pm$1.32 & 85.11$\pm$1.75 & 85.06$\pm$3.04 & \textbf{85.14$\pm$0.64} & 84.55$\pm$1.50 \\ \hline
+        retinamnist & 52.05$\pm$1.24 & \textcolor{red}{48.17$\pm$1.31*} & \textbf{52.75$\pm$1.33} & \textcolor{red}{49.57$\pm$1.70*} & \textcolor{red}{50.87$\pm$1.25*} & 51.82$\pm$2.35 \\ \hline
+        tissuemnist & 69.45$\pm$0.49 & 69.26$\pm$0.69 & 69.13$\pm$0.66 & \textcolor{red}{68.67$\pm$1.04*} & \textcolor{red}{68.93$\pm$0.55*} & \textbf{69.51$\pm$0.53} \\ \hline
+        \textbf{Aggregate} & \textbf{81.81$\pm$0.02} & \textcolor{red}{81.61$\pm$0.02*} & \textcolor{red}{81.58$\pm$0.03*} & \textcolor{red}{81.49$\pm$0.04*} & \textcolor{red}{81.78$\pm$0.03*} & \textcolor{red}{81.61$\pm$0.05*} \\ \hline
+    \end{tabular}
+    }
+    \caption{ACC (accuracy) table summary. Statistically significant differences compared to vanilla are in \textcolor{ForestGreen}{green} if positive and \textcolor{red}{red} if negative. The highest value in each row is \textbf{bold}. A * indicates statistical significance.}
+    \label{tab:results}
+\end{table}
+%ACC (accuracy) table summary. Statistically significant differences compared to vanilla are in \textcolor{ForestGreen}{green} if positive and \textcolor{red}{red} if negative. The highest value in each row is \textbf{bold}. A * indicates statistical significance.
+
+\begin{table}[h]
+    \centering
+    \renewcommand{\arraystretch}{1.2}  % Adjust row height for readability
+    \resizebox{\textwidth}{!}{  % Resize table to fit within the page width
+    \begin{tabular}{l|cccccc}
+        \hline
+        Dataset & Vanilla & block\_diagonal & identity & orthogonal & orthogonalMSE & regular \\ \hline
+        bloodmnist & 99.75$\pm$0.07 & 99.77$\pm$0.05 & \textcolor{ForestGreen}{99.79$\pm$0.04*} & 99.73$\pm$0.06 & \textbf{\textcolor{ForestGreen}{99.81$\pm$0.02*}} & 99.78$\pm$0.05 \\ \hline
+        breastmnist & 88.72$\pm$1.48 & \textbf{\textcolor{ForestGreen}{90.35$\pm$0.99*}} & \textcolor{red}{86.97$\pm$3.40*} & \textcolor{ForestGreen}{90.34$\pm$1.17*} & \textcolor{ForestGreen}{90.15$\pm$1.11*} & 88.38$\pm$3.02 \\ \hline
+        chestmnist & 77.54$\pm$0.42 & \textcolor{red}{76.96$\pm$0.35*} & 77.72$\pm$0.29 & \textcolor{red}{76.14$\pm$1.15*} & \textcolor{red}{76.78$\pm$0.44*} & \textbf{\textcolor{ForestGreen}{77.88$\pm$0.33*}} \\ \hline
+        dermamnist & 92.18$\pm$0.26 & 92.25$\pm$0.38 & \textbf{\textcolor{ForestGreen}{92.66$\pm$0.27*}} & \textcolor{red}{91.09$\pm$0.56*} & \textcolor{red}{91.22$\pm$0.80*} & 92.32$\pm$0.46 \\ \hline
+        octmnist & 95.96$\pm$0.54 & 95.95$\pm$0.81 & 95.81$\pm$0.39 & \textcolor{red}{95.61$\pm$0.52*} & 95.80$\pm$1.15 & \textbf{95.97$\pm$0.94} \\ \hline
+        organamnist & 99.35$\pm$0.19 & 99.38$\pm$0.35 & 99.38$\pm$0.28 & 99.42$\pm$0.16 & \textbf{\textcolor{ForestGreen}{99.56$\pm$0.05*}} & 99.46$\pm$0.16 \\ \hline
+        organcmnist & 99.03$\pm$0.11 & 99.05$\pm$0.14 & 99.07$\pm$0.10 & 99.01$\pm$0.12 & \textbf{\textcolor{ForestGreen}{99.14$\pm$0.04*}} & 99.03$\pm$0.18 \\ \hline
+        organsmnist & 97.13$\pm$0.18 & \textbf{\textcolor{ForestGreen}{97.24$\pm$0.17*}} & 97.14$\pm$0.23 & \textcolor{red}{96.95$\pm$0.27*} & 97.16$\pm$0.12 & 97.22$\pm$0.19 \\ \hline
+        pathmnist & 98.51$\pm$0.47 & \textbf{\textcolor{ForestGreen}{99.04$\pm$0.20*}} & 98.55$\pm$0.46 & 98.66$\pm$0.57 & \textcolor{ForestGreen}{98.78$\pm$0.19*} & 98.60$\pm$0.33 \\ \hline
+        pneumoniamnist & 94.63$\pm$1.28 & 95.13$\pm$1.54 & 94.20$\pm$1.48 & \textcolor{ForestGreen}{95.32$\pm$0.88*} & \textbf{\textcolor{ForestGreen}{96.11$\pm$0.42*}} & \textcolor{ForestGreen}{95.27$\pm$0.73*} \\ \hline
+        retinamnist & 72.54$\pm$1.00 & \textcolor{red}{70.00$\pm$1.85*} & \textbf{73.05$\pm$0.73} & \textcolor{red}{71.26$\pm$1.47*} & 71.96$\pm$1.05 & 72.53$\pm$1.16 \\ \hline
+        tissuemnist & 93.64$\pm$0.10 & 93.59$\pm$0.18 & 93.56$\pm$0.24 & \textcolor{red}{93.31$\pm$0.39*} & \textcolor{red}{93.43$\pm$0.20*} & \textbf{\textcolor{ForestGreen}{93.73$\pm$0.13*}} \\ \hline
+        \textbf{Aggregate} & 92.41$\pm$0.01 & \textcolor{red}{92.39$\pm$0.01*} & \textcolor{red}{92.32$\pm$0.04*} & \textcolor{red}{92.24$\pm$0.01*} & \textcolor{ForestGreen}{92.49$\pm$0.01*} & \textbf{\textcolor{ForestGreen}{92.51$\pm$0.03*}} \\ \hline
+    \end{tabular}
+    }
+    \caption{AUC (area under curve) table summary. Statistically significant differences compared to vanilla are in \textcolor{ForestGreen}{green} if positive and \textcolor{red}{red} if negative. The highest value in each row is \textbf{bold}. A * indicates statistical significance.}
+    \label{tab:results2}
+\end{table}
+% AUC (area under curve) table summary. Statistically significant differences compared to vanilla are in \textcolor{ForestGreen}{green} if positive and \textcolor{red}{red} if negative. The highest value in each row is \textbf{bold}. A * indicates statistical significance.
+
+
+\begin{table}[h]
+    \centering
+    \renewcommand{\arraystretch}{1.2}  % Adjust row height for readability
+    \resizebox{\textwidth}{!}{  % Resize table to fit within the page width
+        \begin{tabular}{l|cccccc}
+            \hline
+            Dataset & Vanilla & block\_diagonal & identity & orthogonal & orthogonalMSE & regular \\ \hline
+            bloodmnist & 96.58 & \textcolor{ForestGreen}{96.99} & \textbf{\textcolor{ForestGreen}{97.19}} & \textcolor{ForestGreen}{97.05} & \textcolor{ForestGreen}{97.14} & \textcolor{ForestGreen}{96.96} \\ \hline
+            breastmnist & 86.54 & \textcolor{ForestGreen}{87.82} & 85.90 & \textbf{\textcolor{ForestGreen}{91.03}} & \textcolor{ForestGreen}{89.74} & \textcolor{ForestGreen}{87.18} \\ \hline
+            chestmnist & 94.80 & \textcolor{ForestGreen}{94.81} & 94.79 & \textbf{\textcolor{ForestGreen}{94.81}} & 94.80 & \textcolor{ForestGreen}{94.80} \\ \hline
+            dermamnist & 75.96 & 75.96 & \textbf{\textcolor{ForestGreen}{76.81}} & 75.81 & 75.46 & \textcolor{ForestGreen}{76.31} \\ \hline
+            octmnist & \textbf{80.60} & \textbf{80.60} & 77.60 & 78.20 & 79.90 & 79.20 \\ \hline
+            organamnist & 92.92 & \textbf{\textcolor{ForestGreen}{93.27}} & \textcolor{ForestGreen}{93.05} & \textcolor{ForestGreen}{93.19} & \textcolor{ForestGreen}{93.06} & 92.90 \\ \hline
+            organcmnist & 90.48 & \textcolor{ForestGreen}{90.85} & 90.43 & \textbf{\textcolor{ForestGreen}{91.15}} & \textcolor{ForestGreen}{90.85} & \textcolor{ForestGreen}{90.90} \\ \hline
+            organsmnist & 77.18 & \textcolor{ForestGreen}{78.16} & \textcolor{ForestGreen}{77.83} & \textcolor{ForestGreen}{78.36} & \textcolor{ForestGreen}{78.78} & \textbf{\textcolor{ForestGreen}{78.83}} \\ \hline
+            pathmnist & 91.60 & \textcolor{ForestGreen}{92.24} & 91.45 & \textbf{\textcolor{ForestGreen}{92.53}} & \textcolor{ForestGreen}{91.80} & 90.71 \\ \hline
+            pneumoniamnist & 88.62 & 87.50 & 88.30 & \textbf{\textcolor{ForestGreen}{88.78}} & 85.90 & 86.38 \\ \hline
+            retinamnist & 54.00 & 50.25 & \textbf{\textcolor{ForestGreen}{55.25}} & 52.25 & 52.00 & \textcolor{ForestGreen}{54.50} \\ \hline
+            tissuemnist & 70.01 & \textcolor{ForestGreen}{70.12} & 69.93 & \textcolor{ForestGreen}{70.14} & 69.57 & \textbf{\textcolor{ForestGreen}{70.22}} \\ \hline
+            \textbf{Aggregate} & 83.27 & 83.21 & 83.21 & \textbf{\textcolor{ForestGreen}{83.61}} & 83.25 & 83.24 \\ \hline
+        \end{tabular}
+    }
+    \caption{max ACC (accuracy) table summary. Statistically significant differences compared to vanilla are in \textcolor{ForestGreen}{green} if positive and \textcolor{red}{red} if negative. The highest value in each row is \textbf{bold}. A * indicates statistical significance. Aggregate shows the mean of each column.}
+    \label{tab:results3}
+\end{table}
+%max ACC (accuracy) table summary. Statistically significant differences compared to vanilla are in \textcolor{ForestGreen}{green} if positive and \textcolor{red}{red} if negative. The highest value in each row is \textbf{bold}. A * indicates statistical significance. Aggregate shows the mean of each column.
+
+
+\begin{table}[h]
+    \centering
+    \renewcommand{\arraystretch}{1.2}  % Adjust row height for readability
+    \resizebox{\textwidth}{!}{  % Resize table to fit within the page width
+        \begin{tabular}{l|cccccc}
+            \hline
+            Dataset & Vanilla & block\_diagonal & identity & orthogonal & orthogonalMSE & regular \\ \hline
+            bloodmnist & 99.83 & \textcolor{ForestGreen}{99.84} & \textbf{\textcolor{ForestGreen}{99.84}} & \textcolor{ForestGreen}{99.83} & 99.83 & 99.83 \\ \hline
+            breastmnist & 91.37 & \textcolor{ForestGreen}{91.73} & 90.60 & \textbf{\textcolor{ForestGreen}{92.04}} & \textcolor{ForestGreen}{91.83} & 91.35 \\ \hline
+            chestmnist & 78.00 & 77.49 & \textcolor{ForestGreen}{78.03} & 77.37 & 77.60 & \textbf{\textcolor{ForestGreen}{78.41}} \\ \hline
+            dermamnist & 92.57 & \textcolor{ForestGreen}{92.86} & \textbf{\textcolor{ForestGreen}{93.10}} & 91.75 & 92.55 & \textcolor{ForestGreen}{92.94} \\ \hline
+            octmnist & 96.60 & \textcolor{ForestGreen}{97.18} & 96.56 & 96.49 & \textbf{\textcolor{ForestGreen}{97.32}} & \textcolor{ForestGreen}{96.72} \\ \hline
+            organamnist & 99.60 & \textcolor{ForestGreen}{99.62} & \textbf{\textcolor{ForestGreen}{99.68}} & \textcolor{ForestGreen}{99.66} & \textcolor{ForestGreen}{99.66} & 99.60 \\ \hline
+            organcmnist & 99.19 & \textcolor{ForestGreen}{99.26} & 99.19 & \textcolor{ForestGreen}{99.20} & \textcolor{ForestGreen}{99.23} & \textbf{\textcolor{ForestGreen}{99.27}} \\ \hline
+            organsmnist & 97.32 & \textbf{\textcolor{ForestGreen}{97.56}} & \textcolor{ForestGreen}{97.38} & \textcolor{ForestGreen}{97.36} & \textcolor{ForestGreen}{97.33} & \textcolor{ForestGreen}{97.46} \\ \hline
+            pathmnist & 99.12 & \textbf{\textcolor{ForestGreen}{99.28}} & \textcolor{ForestGreen}{99.22} & \textcolor{ForestGreen}{99.28} & 99.01 & 99.03 \\ \hline
+            pneumoniamnist & 96.03 & \textbf{\textcolor{ForestGreen}{96.89}} & \textcolor{ForestGreen}{96.34} & \textcolor{ForestGreen}{96.41} & \textcolor{ForestGreen}{96.83} & \textcolor{ForestGreen}{96.34} \\ \hline
+            retinamnist & 74.34 & 71.72 & 74.33 & 72.82 & 73.89 & \textbf{\textcolor{ForestGreen}{74.49}} \\ \hline
+            tissuemnist & 93.81 & \textcolor{ForestGreen}{93.81} & \textcolor{ForestGreen}{93.85} & \textcolor{ForestGreen}{93.82} & 93.64 & \textbf{\textcolor{ForestGreen}{93.98}} \\ \hline
+            \textbf{Aggregate} & 93.15 & 93.10 & \textcolor{ForestGreen}{93.18} & 93.00 & \textcolor{ForestGreen}{93.23} & \textbf{\textcolor{ForestGreen}{93.29}} \\ \hline
+        \end{tabular}
+    }
+    \caption{max AUC (area under curve) table summary. Statistically significant differences compared to vanilla are in \textcolor{ForestGreen}{green} if positive and \textcolor{red}{red} if negative. The highest value in each row is \textbf{bold}. A * indicates statistical significance. Aggregate shows the mean of each column.}
+    \label{tab:results4}
+\end{table}
+%max AUC (area under curve) table summary. Statistically significant differences compared to vanilla are in \textcolor{ForestGreen}{green} if positive and \textcolor{red}{red} if negative. The highest value in each row is \textbf{bold}. A * indicates statistical significance. Aggregate shows the mean of each column.
+
+\end{document}

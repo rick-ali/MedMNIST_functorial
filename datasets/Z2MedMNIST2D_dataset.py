@@ -63,11 +63,12 @@ class PairedZ2MedMNIST2D(Dataset):
 
             else:
                 x1, y1 = self.data.__getitem__(idx)
+                augmented_X1 = x1
                 transformed_X2 = TF.hflip(x1)
                 transformation_type = 0
                 covariate = 0
 
-        return (x1, y1), (transformed_X2, y1), transformation_type, covariate
+        return (augmented_X1, y1), (transformed_X2, y1), transformation_type, covariate
 
 
 

@@ -13,7 +13,7 @@ class FunctorModel(pl.LightningModule):
     def __init__(self, model_flag, n_channels, n_classes, task, data_flag, size, run,
                  lr=0.001, gamma=0.1, milestones=None, output_root=None, 
                  latent_dim=512, lambda_t=0.5, lambda_W=0.1, modularity_exponent=4,
-                 fix_rep=False, W_init='orthogonal',
+                 fix_rep=False, W_init='orthogonal', W_block_size=16,
                  latent_transform_process='from_generators', device='cuda'):
         super().__init__()
         # Save all hyperparameters including new ones for evaluation
@@ -22,6 +22,7 @@ class FunctorModel(pl.LightningModule):
         # Task specifics
         self.task = task
         self.criterion = nn.BCEWithLogitsLoss() if task == "multi-label, binary-class" else nn.CrossEntropyLoss()
+        self.algebra_criterion = nn.MSELoss() #torch.dist 
         self.output_root = output_root
 
         # Get Evaluators
@@ -48,6 +49,7 @@ class FunctorModel(pl.LightningModule):
         self.latent_transform_process = latent_transform_process
         self.fix_rep = fix_rep
         self.W_init = W_init
+        self.W_block_size = W_block_size
     
         if self.latent_transform_process == 'from_generators':
             print("Using latent transformation from generators")
@@ -77,7 +79,11 @@ class FunctorModel(pl.LightningModule):
             assert self.latent_dim % self.modularity_exponent == 0, "Latent dimension must be divisible by the modularity exponent"
             irrep_dims = [self.latent_dim // self.modularity_exponent] * self.modularity_exponent
             print(f"Irrep dimensions: {irrep_dims}")
-            return initialise_W_real_Cn_irreps(irrep_dims, self.modularity_exponent)
+            return initialise_W_real_Cn_irreps(irrep_dims, self.modularity_exponent, device=device)
+        elif initialization == 'block_diagonal':
+            assert self.latent_dim % self.W_block_size == 0, "Latent dimension must be divisible by the block size"
+            print("Block size: ", self.W_block_size)
+            return initialise_W_orthogonal(self.W_block_size, noise_level=0.3, device=device)
         else:
             raise NotImplementedError
 
@@ -85,7 +91,13 @@ class FunctorModel(pl.LightningModule):
     def forward(self, x):
         outputs, latent = self.model(x)
         return outputs, latent
-    
+
+    def get_W(self):
+        if self.latent_transform_process == 'from_generators':
+            if self.W_init == 'block_diagonal':
+                return torch.kron(torch.eye(int(self.latent_dim/self.W_block_size), device=self.W.device), self.W)
+            else:
+                return self.W
 
     def get_transformed_latent_decoupled(self, latent, transformation_type, covariate):
         latent1 = latent[covariate == 1]
@@ -103,14 +115,10 @@ class FunctorModel(pl.LightningModule):
         return transformed_latent
 
     def get_transformed_latent_from_generator(self, latent, transformation_type, covariate):
-        with torch.no_grad():
-            W_powers_list = [None] * (covariate.max()+1)
-        
+        W = self.get_W()
+        transformed = torch.zeros_like(latent, device=W.device)
         for c in covariate.unique():
-            W_powers_list[c] = torch.linalg.matrix_power(self.W, c)
-
-        W_rotation_powers = torch.stack([W_powers_list[c] for c in covariate])
-        transformed = torch.bmm(W_rotation_powers, latent.unsqueeze(2)).squeeze(2)
+            transformed[covariate == c] = F.linear(latent[covariate == c], torch.linalg.matrix_power(W, c))
 
         return transformed
     
@@ -132,19 +140,24 @@ class FunctorModel(pl.LightningModule):
         if self.modularity_exponent == 4:
             W_2 = W @ W
             W_4 = W_2 @ W_2
-            identity = torch.eye(self.latent_dim, device=W.device)
+            identity = torch.eye(W.shape[0], device=W.device)
             modularity_loss = nn.functional.mse_loss(W_4, identity)
         elif self.modularity_exponent == 2:
             W_2 = W @ W
-            identity = torch.eye(self.latent_dim, device=W.device)
-            modularity_loss = nn.functional.mse_loss(W_2, identity)
+            identity = torch.eye(W.shape[0], device=W.device)
+            modularity_loss_1 = self.algebra_criterion(W_2, identity)
+            modularity_loss = modularity_loss_1
+            # W_inverse = torch.linalg.solve(W, identity)
+            # modularity_loss_2 = self.algebra_criterion(W_inverse, W.T)
+            # modularity_loss = (modularity_loss_1 + modularity_loss_2) / 2.0
         else:
             raise NotImplementedError("Only modularity exponents of 2 and 4 are supported")
         return modularity_loss
 
     def get_algebra_loss(self):
+        W = self.W
         if self.latent_transform_process == 'from_generators':
-            return self.get_modularity_loss(self.W)
+            return self.get_modularity_loss(W)
         elif self.latent_transform_process == 'decoupled':
             return self.get_modularity_loss(self.W1) + self.get_modularity_loss(self.W2) + self.get_modularity_loss(self.W3)
         else:
@@ -222,6 +235,9 @@ class FunctorModel(pl.LightningModule):
     def on_validation_epoch_end(self):
         result = self.standard_evaluation('val', self.validation_step_outputs, self.val_evaluator)
         self.validation_step_outputs.clear()
+        W = self.get_W()
+        modularity_loss = torch.linalg.matrix_norm(torch.linalg.matrix_power(W, self.modularity_exponent) - torch.eye(self.latent_dim, device=W.device), ord='fro')
+        result['val_modularity_loss'] = modularity_loss
         self.log_dict(result)
         
         return result
@@ -233,7 +249,8 @@ class FunctorModel(pl.LightningModule):
     def on_test_epoch_end(self):
         result = self.standard_evaluation('test', self.test_step_outputs, self.test_evaluator)
         self.test_step_outputs.clear()
-        modularity_loss = torch.linalg.matrix_norm(torch.linalg.matrix_power(self.W, 4) - torch.eye(self.latent_dim, device=self.W.device), ord='fro')
+        W = self.get_W()
+        modularity_loss = torch.linalg.matrix_norm(torch.linalg.matrix_power(W, self.modularity_exponent) - torch.eye(self.latent_dim, device=W.device), ord='fro')
         result['test_modularity_loss'] = modularity_loss
         self.log_dict(result)
         return result
