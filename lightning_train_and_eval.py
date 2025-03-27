@@ -3,14 +3,17 @@ import pytorch_lightning as pl
 import argparse
 from medmnist import INFO
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
-from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from datasets.MedMNIST2D_dataset import MedMNISTDataModule
 from datasets.CnMedMNIST2D_dataset import CnMedMNISTDataModule
 from datasets.Z2MedMNIST2D_dataset import Z2MedMNISTDataModule
+from datasets.D4MedMNIST2D_dataset import D4MedMNISTDataModule
 from models.MedMNISTVanilla import MedMNISTModel
 from models.FunctorModel import FunctorModel
+from models.D4RegularFunctorModel import D4RegularFunctor
 import torch
 
+import wandb
 
 def get_dataset_from_args(args):
     if args.dataset == 'pairedcn':
@@ -19,6 +22,8 @@ def get_dataset_from_args(args):
         return MedMNISTDataModule(args.data_flag, args.batch_size, args.resize, args.as_rgb, args.size, args.download)
     if args.dataset == 'z2':
         return Z2MedMNISTDataModule(args.data_flag, args.batch_size, args.resize, args.as_rgb, args.size, args.download)
+    if args.dataset == 'd4':
+        return D4MedMNISTDataModule(args.data_flag, args.batch_size, args.resize, args.as_rgb, args.size, args.download)
     raise NotImplementedError
 
 
@@ -29,18 +34,24 @@ def get_model_from_args(args):
     
     elif args.model == 'functor':
         return FunctorModel(args.model_flag, n_channels, n_classes, task, args.data_flag, args.size, args.run, device=args.device,
-                          milestones=milestones, output_root=log_dir, 
-                          lambda_t=args.lambda_t, lambda_W=args.lambda_W, 
+                          milestones=milestones, output_root=log_dir, lambda_c=args.lambda_c,
+                          lambda_t=args.lambda_t, lambda_W=args.lambda_W, algebra_loss_criterion=args.algebra_loss_criterion,
                           W_init=args.W_init, fix_rep=args.fix_rep, W_block_size=args.block_size,
-                          latent_transform_process=args.latent_transform_process, modularity_exponent=args.modularity_exponent)
-    
+                          latent_transform_process=args.latent_transform_process, modularity_exponent=args.modularity_exponent,
+                          lr=args.lr, gamma=args.gamma)
+    elif args.model == 'D4regularfunctor':
+        return D4RegularFunctor(args.model_flag, n_channels, n_classes, task, args.data_flag, args.size, args.run, device=args.device,
+                          milestones=milestones, output_root=log_dir, lambda_c=args.lambda_c,
+                          lambda_t=args.lambda_t,
+                          lr=args.lr, gamma=args.gamma)
+
     raise NotImplementedError
 
 
 def get_args():
     parser = argparse.ArgumentParser(description='Train MedMNIST model with PyTorch Lightning')
 
-    parser.add_argument('--dataset', type=str, default='pairedcn')
+    parser.add_argument('--dataset', type=str, default='z2')
     parser.add_argument('--data_flag', type=str, default='pathmnist')
     parser.add_argument('--output_root', type=str, default='tb_logs', help='Where to save logs')
     parser.add_argument('--size', type=int, default=28)
@@ -54,13 +65,17 @@ def get_args():
 
     parser.add_argument('--model_flag', type=str, default='resnet18')
     parser.add_argument('--model', type=str, default='functor')
+    parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--gamma', type=float, default=0.1)
 
+    parser.add_argument('--lambda_c', type=float, default=1)
     parser.add_argument('--lambda_t', type=float, default=0.5)
     parser.add_argument('--lambda_W', type=float, default=0.1)
     parser.add_argument('--latent_transform_process', type=str, default='from_generators')
     parser.add_argument('--W_init', type=str, default='orthogonal')
     parser.add_argument('--block_size', type=int, default=32, help="Size of W when using block diagonal initialisation")
     parser.add_argument('--fix_rep', action='store_true')
+    parser.add_argument('--algebra_loss_criterion', type=str, default='mse')
 
     parser.add_argument('--num_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=128)
