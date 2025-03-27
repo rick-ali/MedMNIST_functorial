@@ -11,18 +11,29 @@ from utils.initialise_W_utils import initialise_W_orthogonal, initialise_W_rando
 
 class FunctorModel(pl.LightningModule):
     def __init__(self, model_flag, n_channels, n_classes, task, data_flag, size, run,
-                 lr=0.001, gamma=0.1, milestones=None, output_root=None, 
-                 latent_dim=512, lambda_t=0.5, lambda_W=0.1, modularity_exponent=4,
+                 lr=0.001, gamma=0.1, milestones=None, output_root=None,
+                 latent_dim=512, lambda_c=1.0, lambda_t=0.5, lambda_W=0.1, modularity_exponent=4,
                  fix_rep=False, W_init='orthogonal', W_block_size=16,
-                 latent_transform_process='from_generators', device='cuda'):
+                 latent_transform_process='from_generators', algebra_loss_criterion='mse', device='cuda'):
         super().__init__()
         # Save all hyperparameters including new ones for evaluation
         self.save_hyperparameters()
+        self.lr = lr
+        self.gamma = gamma
+        self.milestones = milestones
 
         # Task specifics
         self.task = task
+        self.algebra_loss_criterion = algebra_loss_criterion
         self.criterion = nn.BCEWithLogitsLoss() if task == "multi-label, binary-class" else nn.CrossEntropyLoss()
-        self.algebra_criterion = nn.MSELoss() #torch.dist 
+        if self.algebra_loss_criterion == 'dist':
+            print("Algebra loss criterion: dist")
+            self.algebra_criterion = torch.dist
+        elif self.algebra_loss_criterion == 'mse':
+            print("Algebra loss criterion: mse")
+            self.algebra_criterion = nn.functional.mse_loss
+        else:
+            raise NotImplementedError
         self.output_root = output_root
 
         # Get Evaluators
@@ -42,6 +53,7 @@ class FunctorModel(pl.LightningModule):
             raise NotImplementedError
 
         # Initialise functor parameters
+        self.lambda_c = lambda_c
         self.lambda_t = lambda_t
         self.lambda_W = lambda_W
         self.latent_dim = latent_dim
@@ -207,11 +219,13 @@ class FunctorModel(pl.LightningModule):
             f'{stage}_transformation_loss': transformation_loss,
             f'{stage}_algebra_loss': algebra_loss
         }
-        loss = natural_loss + self.lambda_t * transformation_loss + self.lambda_W * algebra_loss
+        loss = self.lambda_c * natural_loss + self.lambda_t * transformation_loss + self.lambda_W * algebra_loss
         if stage == 'train':
             losses['loss'] = loss
         else:
             losses[f'{stage}_loss'] = loss
+            unreg_loss = natural_loss + transformation_loss + algebra_loss
+            losses[f'{stage}_unreg_loss'] = unreg_loss
         self.log_dict(losses, prog_bar=True, on_step=False, on_epoch=True)
         
 
@@ -273,8 +287,8 @@ class FunctorModel(pl.LightningModule):
         return {f'{stage}_auc': auc, f'{stage}_acc': acc}
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=self.hparams.lr)
-        scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=self.hparams.milestones, gamma=self.hparams.gamma)
+        optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=self.milestones, gamma=self.gamma)
         return [optimizer], [scheduler]
     
     def print_hyperparameters(self):
