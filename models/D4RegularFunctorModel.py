@@ -57,14 +57,12 @@ class D4RegularFunctor(pl.LightningModule):
         return outputs, latent
 
     def get_W(self, g):
-        return torch.kron(torch.eye(int(self.latent_dim/8), device=self.used_device), self.W(g.item()))
+        return torch.kron(torch.eye(int(self.latent_dim/8), device=self.used_device), self.W(g))
         
     def get_transformed_latent(self, latent, transformation_type, covariate):
         transformed = torch.zeros_like(latent, device=self.used_device)
         for c in covariate.unique():
-            with torch.no_grad():
-                W = self.get_W(c)
-            transformed[covariate == c] = F.linear(latent[covariate == c], torch.linalg.matrix_power(W, c))
+            transformed[covariate == c] = F.linear(latent[covariate == c], self.get_W(c.item()))
 
         return transformed
 
