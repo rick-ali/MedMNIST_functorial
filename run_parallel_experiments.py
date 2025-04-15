@@ -35,10 +35,14 @@ for dataset in datasets:
     #     f'python3 lightning_train_and_eval.py --run=vanilla_augmented \
     #             --lambda_t=0. --lambda_W=0. --data_flag={dataset} --dataset=z2'
     # )
-
-    base_commands.append(
-            f'python3 lightning_train_and_eval.py --run=functor_MSEalgebra \
-                --lambda_t=0.5 --lambda_W=0.5 --data_flag={dataset} --dataset=z2 --W_init=orthogonal')
+    # {0.0001, 0.001, 0.01, 0.1, 1}
+    # base_commands.append(f'python3 lightning_train_and_eval.py --num_epochs=1000 --run=D4_regular_functor --dataset=d4 --model=D4regularfunctor --data_flag={dataset} --lambda_t=5')
+    # base_commands.append(f'python3 lightning_train_and_eval.py --num_epochs=1000 --run=D4_regular_functor --dataset=d4 --model=D4regularfunctor --data_flag={dataset} --lambda_t=0.1')
+    # base_commands.append(f'python3 lightning_train_and_eval.py --num_epochs=1000 --run=D4_regular_functor --dataset=d4 --model=D4regularfunctor --data_flag={dataset} --lambda_t=2')
+    base_commands.append(f'python3 lightning_train_and_eval.py --num_epochs=1000 --run=D8_regular_functor --dataset=d8 --model=D8regularfunctor --data_flag={dataset} --lambda_t=2')
+    #base_commands.append(f'python3 lightning_train_and_eval.py --num_epochs=1000 --run=vanilla --dataset=d8 --model=D8regularfunctor --data_flag={dataset} --lambda_t=0')
+    
+    # base_commands.append(f'python3 lightning_train_and_eval.py --run=flip --dataset=z2 --model=functor --W_init=flip --fix_rep --data_flag={dataset} --lambda_t=1 --lambda_W=0')
 
 commands = base_commands * 10
 

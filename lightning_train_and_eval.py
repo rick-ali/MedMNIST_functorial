@@ -8,9 +8,11 @@ from datasets.MedMNIST2D_dataset import MedMNISTDataModule
 from datasets.CnMedMNIST2D_dataset import CnMedMNISTDataModule
 from datasets.Z2MedMNIST2D_dataset import Z2MedMNISTDataModule
 from datasets.D4MedMNIST2D_dataset import D4MedMNISTDataModule
+from datasets.D8MedMNIST2D_dataset import D8MedMNISTDataModule
 from models.MedMNISTVanilla import MedMNISTModel
 from models.FunctorModel import FunctorModel
 from models.D4RegularFunctorModel import D4RegularFunctor
+from models.D8RegularFunctorModel import D8RegularFunctor
 import torch
 
 import wandb
@@ -24,6 +26,8 @@ def get_dataset_from_args(args):
         return Z2MedMNISTDataModule(args.data_flag, args.batch_size, args.resize, args.as_rgb, args.size, args.download)
     if args.dataset == 'd4':
         return D4MedMNISTDataModule(args.data_flag, args.batch_size, args.resize, args.as_rgb, args.size, args.download)
+    if args.dataset == 'd8':
+        return D8MedMNISTDataModule(args.data_flag, args.batch_size, args.resize, args.as_rgb, args.size, args.download)
     raise NotImplementedError
 
 
@@ -33,8 +37,8 @@ def get_model_from_args(args):
                           milestones=milestones, output_root=log_dir)
     
     elif args.model == 'functor':
-        return FunctorModel(args.model_flag, n_channels, n_classes, task, args.data_flag, args.size, args.run, device=args.device,
-                          milestones=milestones, output_root=log_dir, lambda_c=args.lambda_c,
+        return FunctorModel(args.model_flag, n_channels, n_classes, task, args.data_flag, args.size, args.run, device=args.device, log_inputs=args.log_inputs,
+                          milestones=milestones, output_root=log_dir, lambda_c=args.lambda_c, 
                           lambda_t=args.lambda_t, lambda_W=args.lambda_W, algebra_loss_criterion=args.algebra_loss_criterion,
                           W_init=args.W_init, fix_rep=args.fix_rep, W_block_size=args.block_size,
                           latent_transform_process=args.latent_transform_process, modularity_exponent=args.modularity_exponent,
@@ -45,6 +49,11 @@ def get_model_from_args(args):
                           lambda_t=args.lambda_t,
                           lr=args.lr, gamma=args.gamma)
 
+    elif args.model == 'D8regularfunctor':
+        return D8RegularFunctor(args.model_flag, n_channels, n_classes, task, args.data_flag, args.size, args.run, device=args.device,
+                          milestones=milestones, output_root=log_dir, lambda_c=args.lambda_c,
+                          lambda_t=args.lambda_t,
+                          lr=args.lr, gamma=args.gamma)
     raise NotImplementedError
 
 
@@ -76,6 +85,7 @@ def get_args():
     parser.add_argument('--block_size', type=int, default=32, help="Size of W when using block diagonal initialisation")
     parser.add_argument('--fix_rep', action='store_true')
     parser.add_argument('--algebra_loss_criterion', type=str, default='mse')
+    parser.add_argument('--log_inputs', action='store_true', help='Log inputs to TensorBoard')
 
     parser.add_argument('--num_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=128)
@@ -119,7 +129,8 @@ if __name__ == "__main__":
     ###################################### data_module #####################################
     data_module = get_dataset_from_args(args)
     if args.dataset == 'pairedcn':
-        args.modularity_exponent = 4
+        assert 360 % args.x2_angle == 0, "x2_angle must be a divisor of 360"
+        args.modularity_exponent = int(360 / int(args.x2_angle))
     elif args.dataset == 'z2':
         args.modularity_exponent = 2
 
@@ -128,10 +139,10 @@ if __name__ == "__main__":
     model.print_hyperparameters()
 
     ###################################### callbacks #####################################
-    early_stop_callback = EarlyStopping(monitor='val_loss', mode='min', patience=args.patience, verbose=True)
+    early_stop_callback = EarlyStopping(monitor='val_auc', mode='max', patience=args.patience, verbose=True)
     checkpoint_callback = ModelCheckpoint(
-        monitor='val_loss', 
-        mode='min', 
+        monitor='val_auc', 
+        mode='max', 
         save_top_k=1,
         dirpath=checkpoints_dir,  # Use the version-specific checkpoints directory
         filename='best_model',

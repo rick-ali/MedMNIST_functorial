@@ -1,3 +1,4 @@
+from typing import Tuple
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 import torchvision.transforms.functional as  TF
@@ -7,8 +8,9 @@ import pytorch_lightning as pl
 import PIL
 import torch
 import random
+from utils.representations import D8RegularRepresentation
 
-class PairedZ2MedMNIST2D(Dataset):
+class PairedD8MedMNIST2D(Dataset):
     def __init__(self, data, transform, split, test_all_rotations=False):
         """
         Args:
@@ -23,8 +25,7 @@ class PairedZ2MedMNIST2D(Dataset):
         self.split = split
         self.test_all_rotations = test_all_rotations
         self.transform = transform
-        self.z2_action_type = 'flip' # or 'rotate 180'
-        print("Z2 action:", self.z2_action_type)
+        self.representation = D8RegularRepresentation(device='cpu')
 
 
     def __len__(self):
@@ -40,21 +41,42 @@ class PairedZ2MedMNIST2D(Dataset):
         else:
             return len(self.data.imgs)
     
-    def z2_action(self, image):
-        if self.z2_action_type == 'flip':
-            return TF.hflip(image)
-        elif self.z2_action_type == 'rotate 180':
-            return TF.rotate(image, angle=180)
+
+    def augment_image(self, img: torch.Tensor) -> Tuple[torch.Tensor, int]:
+        """
+        Augments the input image using a random symmetry from D16, i.e. the dihedral group
+        of an octagon. The convention is:
+        - Indices 0 to 7: pure rotations by 0, 45, ..., 315 degrees.
+        - Indices 8 to 15: reflection (horizontal flip) followed by a rotation by 0, 45, ..., 315 degrees.
+        
+        Returns:
+        res: the augmented image
+        choice: an integer (0-15) representing the chosen group element.
+        """
+        choice = random.randint(0, 15)
+        
+        if choice < 8:
+            # Pure rotation: rotate by 45 * choice degrees.
+            angle = 45 * choice
+            res = TF.rotate(img, angle)
+        else:
+            # Reflection followed by rotation.
+            # Here we define s as a horizontal flip.
+            k = choice - 8
+            # This corresponds to the group element r^k s, i.e. apply s then rotate by 45*k.
+            res = TF.rotate(TF.hflip(img), 45 * k)
+        
+        return res, choice
     
+
     def __getitem__(self, idx):
+        transformation_type = 0
+
         if self.split == 'train':
             x1, y1 = self.data.__getitem__(idx)
-            flip_x1 = random.choice([True, False])
-            augmented_X1 = self.z2_action(x1) if flip_x1 else x1
-            
-            transformation_type = 0
-            covariate = 1
-            transformed_X2 = self.z2_action(augmented_X1)
+            augmented_X1, g_x1 = self.augment_image(x1)
+            transformed_X2, g_x2 = self.augment_image(x1)
+            covariate = self.representation.group_mult(g_x2, self.representation.d16_inverse(g_x1))
         
         else:
             if self.test_all_rotations:
@@ -63,23 +85,22 @@ class PairedZ2MedMNIST2D(Dataset):
                 flipping_idx = idx % 2
 
                 flip_x1 = [True,False][flipping_idx]
-                augmented_X1 = self.z2_action(x1) if flip_x1 else x1
+                augmented_X1 = TF.hflip(x1) if flip_x1 else x1
                 
                 covariate = 1
-                transformed_X2 = self.z2_action(augmented_X1)
+                transformed_X2 = TF.hflip(augmented_X1)
 
             else:
                 x1, y1 = self.data.__getitem__(idx)
-                augmented_X1 = x1
-                transformed_X2 = self.z2_action(x1)
-                transformation_type = 0
-                covariate = 0
+                augmented_X1, g_x1 = x1, 0
+                transformed_X2, g_x2 = self.augment_image(x1)
+                covariate = self.representation.group_mult(g_x2, self.representation.d16_inverse(g_x1))
 
         return (augmented_X1, y1), (transformed_X2, y1), transformation_type, covariate
 
 
 
-class Z2MedMNISTDataModule(pl.LightningDataModule):
+class D8MedMNISTDataModule(pl.LightningDataModule):
     def __init__(self, data_flag, batch_size, resize, as_rgb, size, download):
         super().__init__()
         self.data_flag = data_flag
@@ -105,13 +126,13 @@ class Z2MedMNISTDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         train_data = self.DataClass(split='train', transform=self.transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
-        self.train_dataset = PairedZ2MedMNIST2D(train_data, transform=self.transform, split='train')
+        self.train_dataset = PairedD8MedMNIST2D(train_data, transform=self.transform, split='train')
 
         val_data = self.DataClass(split='val', transform=self.transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
-        self.val_dataset = PairedZ2MedMNIST2D(val_data, transform=self.transform, split='val')
+        self.val_dataset = PairedD8MedMNIST2D(val_data, transform=self.transform, split='val')
 
         test_data = self.DataClass(split='test', transform=self.transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
-        self.test_dataset = PairedZ2MedMNIST2D(test_data, transform=self.transform, split='test')
+        self.test_dataset = PairedD8MedMNIST2D(test_data, transform=self.transform, split='test')
 
 
     def train_dataloader(self):
@@ -124,7 +145,7 @@ class Z2MedMNISTDataModule(pl.LightningDataModule):
         return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=15)
     
 if __name__ == '__main__':
-    data_module = Z2MedMNISTDataModule('pathmnist', 128, resize=False, as_rgb=True, size=28, download=False)
+    data_module = D8MedMNISTDataModule('pathmnist', 128, resize=False, as_rgb=True, size=28, download=False)
     data_module.setup()
     train_loader = data_module.train_dataloader()
     val_loader = data_module.val_dataloader()

@@ -1,6 +1,10 @@
 # Output
 output/
 tb_logs/
+*.csv
+*.pdf
+experiments/
+results/
 
 .DS_Store
 

@@ -8,9 +8,10 @@ from torchvision.models import resnet18, resnet50
 from medmnist import Evaluator
 from models.BaseModels import ResNet18
 from utils.initialise_W_utils import initialise_W_orthogonal, initialise_W_random, initialise_W_real_Cn_irreps
+from utils.logging_utils import log_inputs
 
 class FunctorModel(pl.LightningModule):
-    def __init__(self, model_flag, n_channels, n_classes, task, data_flag, size, run,
+    def __init__(self, model_flag, n_channels, n_classes, task, data_flag, size, run, log_inputs = False,
                  lr=0.001, gamma=0.1, milestones=None, output_root=None,
                  latent_dim=512, lambda_c=1.0, lambda_t=0.5, lambda_W=0.1, modularity_exponent=4,
                  fix_rep=False, W_init='orthogonal', W_block_size=16,
@@ -18,6 +19,7 @@ class FunctorModel(pl.LightningModule):
         super().__init__()
         # Save all hyperparameters including new ones for evaluation
         self.save_hyperparameters()
+        self.log_inputs = log_inputs
         self.lr = lr
         self.gamma = gamma
         self.milestones = milestones
@@ -96,6 +98,8 @@ class FunctorModel(pl.LightningModule):
             assert self.latent_dim % self.W_block_size == 0, "Latent dimension must be divisible by the block size"
             print("Block size: ", self.W_block_size)
             return initialise_W_orthogonal(self.W_block_size, noise_level=0.3, device=device)
+        elif initialization == 'flip':
+            return torch.eye(self.latent_dim, device=device).flip(dims=[1])
         else:
             raise NotImplementedError
 
@@ -239,6 +243,9 @@ class FunctorModel(pl.LightningModule):
 
 
     def training_step(self, batch, batch_idx):
+        if self.log_inputs:
+            (x1,y1), (x2,y2), _, _ = batch
+            log_inputs(self, x1, x2, 'train')
         loss = self.calculate_loss(batch, batch_idx, 'train')
         return loss
 
