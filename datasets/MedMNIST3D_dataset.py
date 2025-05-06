@@ -8,9 +8,17 @@ import pytorch_lightning as pl
 import PIL
 import torch
 import random
+import torch.utils.data as data
+
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from utils3D.utils import Transform3D
+
 
 class PairedD4MedMNIST2D(Dataset):
-    def __init__(self, data, transform, split, test_all_rotations=False):
+    def __init__(self, data, split, test_all_rotations=False):
         """
         Args:
         data: MedMNIST dataset object. In particular, this class assumes that the dataset object has the following attributes:
@@ -23,7 +31,6 @@ class PairedD4MedMNIST2D(Dataset):
         self.data = data
         self.split = split
         self.test_all_rotations = test_all_rotations
-        self.transform = transform
 
 
     def __len__(self):
@@ -51,14 +58,14 @@ class PairedD4MedMNIST2D(Dataset):
             res = TF.rotate(img, 180)
         elif choice == 3:  # rrr
             res = TF.rotate(img, 270)
-        elif choice == 4:  # s
+        elif choice == 4:  # srr
             res = TF.hflip(img)
-        elif choice == 5:  # rs
+        elif choice == 5:  # s
+            res = TF.vflip(img)
+        elif choice == 6:  # srrr
             res = TF.rotate(TF.hflip(img), 90)
-        elif choice == 6:  # rrs
-            res = TF.rotate(TF.hflip(img), 180)
-        elif choice == 7:  # rrrs
-            res = TF.rotate(TF.hflip(img), 270)
+        elif choice == 7:  #sr
+            res = TF.rotate(TF.vflip(img), 90)
 
         return res, choice
     
@@ -103,28 +110,19 @@ class D4MedMNISTDataModule(pl.LightningDataModule):
         self.download = download
         self.info = INFO[data_flag]
         self.DataClass = getattr(medmnist, self.info['python_class'])
-        
-        if resize:
-            self.transform = transforms.Compose([
-                transforms.Resize((224, 224), interpolation=PIL.Image.NEAREST),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[.5], std=[.5])
-            ])
-        else:
-            self.transform = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[.5], std=[.5])
-            ])
 
     def setup(self, stage=None):
-        train_data = self.DataClass(split='train', transform=self.transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
-        self.train_dataset = PairedD4MedMNIST2D(train_data, transform=self.transform, split='train')
+        shape_transform = True if self.data_flag in ['adrenalmnist3d', 'vesselmnist3d'] else False
+        train_transform = Transform3D(mul='random') if shape_transform else Transform3D()
+        eval_transform = Transform3D(mul='0.5') if shape_transform else Transform3D()
+        
+        train_data = self.DataClass(split='train', transform=train_transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
+        val_data = self.DataClass(split='val', transform=eval_transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
+        test_data = self.DataClass(split='test', transform=eval_transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
 
-        val_data = self.DataClass(split='val', transform=self.transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
-        self.val_dataset = PairedD4MedMNIST2D(val_data, transform=self.transform, split='val')
-
-        test_data = self.DataClass(split='test', transform=self.transform, download=self.download, as_rgb=self.as_rgb, size=self.size)
-        self.test_dataset = PairedD4MedMNIST2D(test_data, transform=self.transform, split='test')
+        self.train_dataset = PairedD4MedMNIST2D(train_data, split='train')
+        self.val_dataset = PairedD4MedMNIST2D(val_data, split='val')
+        self.test_dataset = PairedD4MedMNIST2D(test_data, split='test')
 
 
     def train_dataloader(self):
@@ -136,8 +134,11 @@ class D4MedMNISTDataModule(pl.LightningDataModule):
     def test_dataloader(self):
         return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=15)
     
+
 if __name__ == '__main__':
-    data_module = D4MedMNISTDataModule('pathmnist', 128, resize=False, as_rgb=True, size=28, download=False)
+    
+    
+    data_module = D4MedMNISTDataModule('organmnist3d', 128, resize=False, as_rgb=True, size=28, download=False)
     data_module.setup()
     train_loader = data_module.train_dataloader()
     val_loader = data_module.val_dataloader()

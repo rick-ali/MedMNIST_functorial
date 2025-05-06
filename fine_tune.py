@@ -9,12 +9,10 @@ from datasets.CnMedMNIST2D_dataset import CnMedMNISTDataModule
 from datasets.Z2MedMNIST2D_dataset import Z2MedMNISTDataModule
 from datasets.D4MedMNIST2D_dataset import D4MedMNISTDataModule
 from datasets.D8MedMNIST2D_dataset import D8MedMNISTDataModule
-from datasets.C4xC4DDMNIST_dataset import C4xC4DDMNISTDataModule
 from models.MedMNISTVanilla import MedMNISTModel
 from models.FunctorModel import FunctorModel
 from models.D4RegularFunctorModel import D4RegularFunctor
 from models.D8RegularFunctorModel import D8RegularFunctor
-from models.C4xC4RegularFunctorModel import C4xC4RegularFunctor
 import torch
 
 import wandb
@@ -30,9 +28,6 @@ def get_dataset_from_args(args):
         return D4MedMNISTDataModule(args.data_flag, args.batch_size, args.resize, args.as_rgb, args.size, args.download)
     if args.dataset == 'd8':
         return D8MedMNISTDataModule(args.data_flag, args.batch_size, args.resize, args.as_rgb, args.size, args.download)
-    if args.dataset == 'ddmnist_c4':
-        return C4xC4DDMNISTDataModule(256)
-
     raise NotImplementedError
 
 
@@ -59,9 +54,6 @@ def get_model_from_args(args):
                           milestones=milestones, output_root=log_dir, lambda_c=args.lambda_c,
                           lambda_t=args.lambda_t,
                           lr=args.lr, gamma=args.gamma)
-    elif args.model == 'C4xC4regularfunctor':
-        return C4xC4RegularFunctor(lr=args.lr, gamma=args.gamma, milestones=milestones, output_root=log_dir, device=args.device,
-                                   lambda_c=args.lambda_c, lambda_t=args.lambda_t, equivariant_layer_id=args.equivariant_layer_id,)
     raise NotImplementedError
 
 
@@ -82,7 +74,7 @@ def get_args():
 
     parser.add_argument('--model_flag', type=str, default='resnet18')
     parser.add_argument('--model', type=str, default='functor')
-    parser.add_argument('--lr', type=float, default=0.001) # Default DDMNIST: 5e-5
+    parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--gamma', type=float, default=0.1)
 
     parser.add_argument('--lambda_c', type=float, default=1)
@@ -94,14 +86,15 @@ def get_args():
     parser.add_argument('--fix_rep', action='store_true')
     parser.add_argument('--algebra_loss_criterion', type=str, default='mse')
     parser.add_argument('--log_inputs', action='store_true', help='Log inputs to TensorBoard')
-    parser.add_argument('--equivariant_layer_id', type=int, nargs="+", default=[9], help='Layer ID of the equivariant layer in the model')
 
-    parser.add_argument('--num_epochs', type=int, default=100) # Default DDMNIST: 50
-    parser.add_argument('--batch_size', type=int, default=128) # Default DDMNIST: 256
+    parser.add_argument('--num_epochs', type=int, default=100)
+    parser.add_argument('--batch_size', type=int, default=128)
     
     parser.add_argument('--run', type=str, default='model1')
     parser.add_argument('--visible_gpus', type=str, default='0,1,2,3')
     parser.add_argument('--gpu_id', type=str, default='0')
+
+    parser.add_argument('--model_path', type=str, default='tb_logs')
     return parser.parse_args()
 
 
@@ -145,13 +138,13 @@ if __name__ == "__main__":
 
     ###################################### model #####################################
     model = get_model_from_args(args).to(device)
+    # Load model weights
+    checkpoint = torch.load(args.model_path)
+    model.load_state_dict(checkpoint['state_dict'])
     model.print_hyperparameters()
 
     ###################################### callbacks #####################################
     early_stop_callback = EarlyStopping(monitor='val_auc', mode='max', patience=args.patience, verbose=True)
-    if args.dataset == 'ddmnist_c4':
-        early_stop_callback = EarlyStopping(monitor='val_acc', mode='max', patience=args.patience, verbose=True)
-
     checkpoint_callback = ModelCheckpoint(
         monitor='val_auc', 
         mode='max', 
@@ -160,24 +153,6 @@ if __name__ == "__main__":
         filename='best_model',
         save_weights_only=True
     )
-    if args.dataset == 'ddmnist_c4':
-        checkpoint_callback = ModelCheckpoint(
-            monitor='val_acc', 
-            mode='max', 
-            save_top_k=1,
-            dirpath=checkpoints_dir,  # Use the version-specific checkpoints directory
-            filename='best_model',
-            save_weights_only=True
-        )
-        # checkpoint_callback = ModelCheckpoint(
-        #     dirpath=checkpoints_dir,
-        #     filename='last',
-        #     save_last=True,         # <<< this makes it write last.ckpt
-        #     save_top_k=0,           # don’t save any “best” checkpoints
-        #     every_n_epochs=1,       # ensure it writes every epoch’s “last”
-        #     save_weights_only=True,
-        # )
-
     
     ###################################### trainer #####################################
     #try:
@@ -191,12 +166,9 @@ if __name__ == "__main__":
     )
     trainer.fit(model, data_module)
     best_model_path = checkpoint_callback.best_model_path
-    #best_model_path = checkpoint_callback.last_model_path
     print("Loading model from best checkpoint: ", best_model_path)
     model = type(model).load_from_checkpoint(best_model_path)
-    data_module_augmented_test = C4xC4DDMNISTDataModule(256, augment_test=True)
-    data_module_augmented_test.setup(stage='test')
-    trainer.test(model, dataloaders=[data_module.test_dataloader(), data_module_augmented_test.test_dataloader()])
+    trainer.test(model, data_module)
     #except Exception as e:
         #pass
         # best_model_path = checkpoint_callback.best_model_path

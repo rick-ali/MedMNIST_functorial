@@ -5,6 +5,7 @@ tb_logs/
 *.pdf
 experiments/
 results/
+data/
 
 .DS_Store
 
